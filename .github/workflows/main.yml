@@ -20,7 +20,6 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          # تحديد إصدارات تتوافق مع المكتبات الحديثة وتضمين CMake و NDK لـ PaddleOCR
           build-tools-version: "34.0.0"
           sdk-version: "34"
           ndk-version: "25.1.8937393"
@@ -42,19 +41,25 @@ jobs:
           GRADLE_DIR=$(dirname "$GRADLE_FILE")
           cd "$GRADLE_DIR"
           
-          # ربط مسار الـ SDK بملف local.properties لكي يراه Gradle بوضوح
+          # ربط مسار الـ SDK
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           
           # تفعيل AndroidX و Jetifier
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
-          # استخدامgradlew المرفق في المشروع إن وجد (أفضل وأضمن من تحميل gradle يدوياً)
+          # حذف أسطر الأيقونات تماماً من الـ Manifest لمنع خطأ الموارد المفقودة
+          find . -name "AndroidManifest.xml" | while read m; do
+            sed -i '/android:icon/d' "$m"
+            sed -i '/android:roundIcon/d' "$m"
+            echo "Fixed: $m"
+          done
+          
+          # بناء المشروع
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
             ./gradlew assembleDebug
           else
-            # تحميل Gradle 8.5 في حال لم يكن الـ wrapper موجوداً
             wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
             unzip -q gradle-8.5-bin.zip
             export PATH=$PWD/gradle-8.5/bin:$PATH
