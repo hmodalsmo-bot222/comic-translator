@@ -49,12 +49,20 @@ jobs:
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
-          # Fix 2: Remove missing round icon reference from manifest
-          MANIFEST="src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST" ]; then
-            sed -i 's/android:roundIcon="@mipmap\/ic_launcher_round"//g' "$MANIFEST"
-            echo "Removed roundIcon from manifest"
-          fi
+          # Fix 2: Create missing round icons from existing launcher icons
+          find . -path "*/mipmap*/ic_launcher.png" | while read f; do
+            dir=$(dirname "$f")
+            if [ ! -f "$dir/ic_launcher_round.png" ]; then
+              cp "$f" "$dir/ic_launcher_round.png"
+              echo "Created $dir/ic_launcher_round.png"
+            fi
+          done
+          
+          # Fix 3: Remove roundIcon references from all manifests
+          find . -name "AndroidManifest.xml" | while read m; do
+            sed -i 's/android:roundIcon="[^"]*"//g' "$m"
+            echo "Fixed manifest: $m"
+          done
           
           # Install Gradle 8.5
           wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
