@@ -22,60 +22,37 @@ jobs:
 
       - name: Extract ZIP and Build APK
         run: |
-          echo "=== Files in repo root ==="
-          ls -la
-          
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -1)
-          echo "ZIP found: $ZIP_FILE"
-          
           if [ -n "$ZIP_FILE" ]; then
             unzip -q "$ZIP_FILE"
-            echo "ZIP extracted"
           fi
           
           GRADLE_FILE=$(find . -name "build.gradle" -not -path "./.github/*" | head -1)
-          echo "Gradle file: $GRADLE_FILE"
-          
           if [ -z "$GRADLE_FILE" ]; then
             echo "No Gradle project found!"
             exit 1
           fi
           
           GRADLE_DIR=$(dirname "$GRADLE_FILE")
-          echo "Building in: $GRADLE_DIR"
           cd "$GRADLE_DIR"
           
-          # Fix 1: Enable AndroidX
+          # Fix: Enable AndroidX
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
-          # Fix 2: Create missing round icons from existing launcher icons
-          find . -path "*/mipmap*/ic_launcher.png" | while read f; do
-            dir=$(dirname "$f")
-            if [ ! -f "$dir/ic_launcher_round.png" ]; then
-              cp "$f" "$dir/ic_launcher_round.png"
-              echo "Created $dir/ic_launcher_round.png"
-            fi
-          done
-          
-          # Fix 3: Remove roundIcon references from all manifests
+          # Fix: Remove ALL icon references from manifest so build doesn't look for missing images
           find . -name "AndroidManifest.xml" | while read m; do
+            sed -i 's/android:icon="[^"]*"//g' "$m"
             sed -i 's/android:roundIcon="[^"]*"//g' "$m"
-            echo "Fixed manifest: $m"
+            echo "Fixed: $m"
           done
           
-          # Install Gradle 8.5
+          # Install compatible Gradle
           wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
           unzip -q gradle-8.5-bin.zip
           export PATH=$PWD/gradle-8.5/bin:$PATH
-          gradle --version
           
-          if [ -f "gradlew" ]; then
-            chmod +x gradlew
-            ./gradlew assembleDebug
-          else
-            gradle assembleDebug
-          fi
+          gradle assembleDebug
 
       - name: Find and Upload APK
         uses: actions/upload-artifact@v4
