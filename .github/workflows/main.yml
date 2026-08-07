@@ -11,12 +11,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Debug - List files
-        run: |
-          echo "Current directory: $(pwd)"
-          ls -la
-          find . -name "build.gradle" -o -name "settings.gradle" | head -5
-
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -26,13 +20,42 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Build APK
-        run: gradle assembleDebug
+      - name: Extract ZIP and Build APK
+        run: |
+          echo "=== Files in repo root ==="
+          ls -la
+          
+          ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -1)
+          echo "ZIP found: $ZIP_FILE"
+          
+          if [ -n "$ZIP_FILE" ]; then
+            unzip -q "$ZIP_FILE"
+            echo "ZIP extracted"
+          fi
+          
+          GRADLE_FILE=$(find . -name "build.gradle" -not -path "./.github/*" | head -1)
+          echo "Gradle file: $GRADLE_FILE"
+          
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "No Gradle project found!"
+            exit 1
+          fi
+          
+          GRADLE_DIR=$(dirname "$GRADLE_FILE")
+          echo "Building in: $GRADLE_DIR"
+          cd "$GRADLE_DIR"
+          
+          if [ -f "gradlew" ]; then
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          else
+            gradle assembleDebug
+          fi
 
       - name: Find and Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug
           path: |
-            app/build/outputs/apk/debug/*.apk
             **/build/outputs/apk/debug/*.apk
+            **/build/outputs/apk/*/*.apk
