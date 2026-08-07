@@ -45,11 +45,18 @@ jobs:
           echo "Building in: $GRADLE_DIR"
           cd "$GRADLE_DIR"
           
-          # Fix: Enable AndroidX
+          # Fix 1: Enable AndroidX
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
-          # Install Gradle 8.5 for old project compatibility
+          # Fix 2: Remove missing round icon reference from manifest
+          MANIFEST="src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ]; then
+            sed -i 's/android:roundIcon="@mipmap\/ic_launcher_round"//g' "$MANIFEST"
+            echo "Removed roundIcon from manifest"
+          fi
+          
+          # Install Gradle 8.5
           wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
           unzip -q gradle-8.5-bin.zip
           export PATH=$PWD/gradle-8.5/bin:$PATH
