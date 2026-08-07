@@ -45,6 +45,12 @@ jobs:
           echo "Building in: $GRADLE_DIR"
           cd "$GRADLE_DIR"
           
+          # Install Gradle 8.5 for old project compatibility
+          wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
+          unzip -q gradle-8.5-bin.zip
+          export PATH=$PWD/gradle-8.5/bin:$PATH
+          gradle --version
+          
           if [ -f "gradlew" ]; then
             chmod +x gradlew
             ./gradlew assembleDebug
