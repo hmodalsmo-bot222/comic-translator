@@ -45,6 +45,10 @@ jobs:
           echo "Building in: $GRADLE_DIR"
           cd "$GRADLE_DIR"
           
+          # Fix: Enable AndroidX
+          echo "android.useAndroidX=true" >> gradle.properties
+          echo "android.enableJetifier=true" >> gradle.properties
+          
           # Install Gradle 8.5 for old project compatibility
           wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
           unzip -q gradle-8.5-bin.zip
