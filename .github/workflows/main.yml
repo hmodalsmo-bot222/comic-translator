@@ -25,7 +25,7 @@ jobs:
           ndk-version: "25.1.8937393"
           cmake-version: "3.22.1"
 
-      - name: Extract ZIP and Build APK
+      - name: Extract ZIP and Prepare Project
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -1)
           if [ -n "$ZIP_FILE" ]; then
@@ -44,18 +44,16 @@ jobs:
           # ربط مسار الـ SDK
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           
-          # تفعيل AndroidX و Jetifier
+          # تفعيل AndroidX و Jetifier لتوافق المكتبات
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
-          # حذف أسطر الأيقونات تماماً من الـ Manifest لمنع خطأ الموارد المفقودة
-          find . -name "AndroidManifest.xml" | while read m; do
-            sed -i '/android:icon/d' "$m"
-            sed -i '/android:roundIcon/d' "$m"
-            echo "Fixed: $m"
-          done
+          # حل مشكلة الأيقونات المفقودة نهائياً بإنشاء مجلد وملف أيقونة افتراضي
+          mkdir -p app/src/main/res/mipmap-mdpi
+          echo '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FF000000" android:pathData="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"/></vector>' > app/src/main/res/mipmap-mdpi/ic_launcher.xml
+          cp app/src/main/res/mipmap-mdpi/ic_launcher.xml app/src/main/res/mipmap-mdpi/ic_launcher_round.xml
           
-          # بناء المشروع
+          # بناء المشروع باستخدام gradlew المرفق أو تحميل gradle يدوياً
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
             ./gradlew assembleDebug
