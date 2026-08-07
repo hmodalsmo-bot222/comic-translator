@@ -41,33 +41,29 @@ jobs:
           GRADLE_DIR=$(dirname "$GRADLE_FILE")
           cd "$GRADLE_DIR"
           
-          # ربط مسار الـ SDK وإعدادات الـ Gradle
           echo "sdk.dir=$ANDROID_HOME" > local.properties
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
-          # ضبط ملف build.gradle (إضافة namespace و kapt و Room)
-          python3 -c "
+          # Run python script cleanly using EOF to avoid any bash substitution errors
+          python3 - << 'EOF'
           import os, re
+          
           app_gradle_path = 'app/build.gradle'
           if os.path.exists(app_gradle_path):
               with open(app_gradle_path, 'r') as f:
                   content = f.read()
               if 'namespace' not in content:
-                  content = re.sub(r'android\s*\{', 'android {\n    namespace \"com.comictrans\"', content)
+                  content = re.sub(r'android\s*\{', 'android {\n    namespace "com.comictrans"', content)
               if 'kotlin-kapt' not in content:
                   if 'plugins {' in content:
-                      content = content.replace('plugins {', 'plugins {\n    id \'kotlin-kapt\'')
+                      content = content.replace('plugins {', "plugins {\n    id 'kotlin-kapt'")
               if 'androidx.room:room-runtime' not in content:
                   if 'dependencies {' in content:
-                      content = content.replace('dependencies {', 'dependencies {\n    implementation \"androidx.room:room-runtime:2.6.1\"\n    implementation \"androidx.room:room-ktx:2.6.1\"\n    kapt \"androidx.room:room-compiler:2.6.1\"')
+                      content = content.replace('dependencies {', 'dependencies {\n    implementation "androidx.room:room-runtime:2.6.1"\n    implementation "androidx.room:room-ktx:2.6.1"\n    kapt "androidx.room:room-compiler:2.6.1"')
               with open(app_gradle_path, 'w') as f:
                   f.write(content)
-          "
-
-          # تصحيح خطأ الـ syntax في ملف TranslationEngine.kt تلقائياً
-          python3 -c "
-          import os
+          
           engine_path = 'app/src/main/java/com/comictrans/engine/TranslationEngine.kt'
           if os.path.exists(engine_path):
               with open(engine_path, 'r', encoding='utf-8', errors='ignore') as f:
@@ -75,23 +71,20 @@ jobs:
               
               new_lines = []
               for line in lines:
-                  # إذا وجدنا سطر الـ prompt المتسبب بالمشكلة، نقوم باستبداله بنسخة صحيحة وآمنة
                   if 'val prompt =' in line and 'target ==' in line:
-                      new_lines.append('        val prompt = \"\"\"Translate this comic text into \\${if (target == \"ar\") \"Arabic\" else target} naturally. Return only the translation:\\n\\n\\$text\"\"\"\n')
+                      new_lines.append('        val prompt = """Translate this comic text into ${if (target == "ar") "Arabic" else target} naturally. Return only the translation:\n\n$text"""\n')
                   else:
                       new_lines.append(line)
                       
               with open(engine_path, 'w', encoding='utf-8') as f:
                   f.writelines(new_lines)
               print('Successfully fixed TranslationEngine.kt syntax errors!')
-          "
+          EOF
 
-          # إنشاء أيقونات افتراضية لتفادي أخطاء الموارد
           mkdir -p app/src/main/res/mipmap-mdpi
           echo '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FF000000" android:pathData="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"/></vector>' > app/src/main/res/mipmap-mdpi/ic_launcher.xml
           cp app/src/main/res/mipmap-mdpi/ic_launcher.xml app/src/main/res/mipmap-mdpi/ic_launcher_round.xml
           
-          # بناء المشروع
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
             ./gradlew assembleDebug --no-daemon
