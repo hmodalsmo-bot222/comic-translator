@@ -20,10 +20,7 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
         with:
-          build-tools-version: "34.0.0"
-          sdk-version: "34"
-          ndk-version: "25.1.8937393"
-          cmake-version: "3.22.1"
+          packages: "platforms;android-34 build-tools;34.0.0"
 
       - name: Extract ZIP and Build APK
         run: |
@@ -54,7 +51,10 @@ jobs:
                   content = f.read()
               if 'namespace' not in content:
                   content = re.sub(r'android\s*\{', 'android {\n    namespace "com.comictrans"', content)
-              if 'kotlin-kapt' not in content:
+              # كان يفحص 'kotlin-kapt' فقط، فما يلاحظ إن الملف أصلاً يستخدم
+              # الصيغة الكاملة 'org.jetbrains.kotlin.kapt' فيضيف الـ plugin مرة ثانية
+              # (خطأ "plugin already applied"). الفحص الآن يغطي الصيغتين.
+              if 'kotlin-kapt' not in content and 'kotlin.kapt' not in content:
                   content = content.replace('plugins {', "plugins {\n    id 'kotlin-kapt'")
               if 'androidx.room:room-runtime' not in content:
                   content = content.replace('dependencies {', 'dependencies {\n    implementation "androidx.room:room-runtime:2.6.1"\n    implementation "androidx.room:room-ktx:2.6.1"\n    kapt "androidx.room:room-compiler:2.6.1"')
