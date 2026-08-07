@@ -17,16 +17,27 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Find gradlew and build APK
+      - name: Find Gradle project and build APK
         run: |
-          GRADLEW=$(find . -name "gradlew")
-          if [ -z "$GRADLEW" ]; then
+          # Find directory containing build.gradle or settings.gradle
+          GRADLE_FILE=$(find . -name "build.gradle" -o -name "build.gradle.kts" -o -name "settings.gradle" -o -name "settings.gradle.kts" | head -1)
+          
+          if [ -z "$GRADLE_FILE" ]; then
+            echo "No Gradle project found!"
+            exit 1
+          fi
+          
+          GRADLE_DIR=$(dirname "$GRADLE_FILE")
+          echo "Found Gradle project at: $GRADLE_DIR"
+          cd "$GRADLE_DIR"
+          
+          if [ -f "gradlew" ]; then
+            echo "Found gradlew"
+            chmod +x gradlew
+            ./gradlew assembleDebug
+          else
             echo "gradlew not found, using gradle"
             gradle assembleDebug
-          else
-            echo "Found gradlew at: $GRADLEW"
-            chmod +x "$GRADLEW"
-            "$GRADLEW" assembleDebug
           fi
 
       - name: Find and Upload APK
