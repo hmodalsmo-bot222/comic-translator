@@ -22,7 +22,7 @@ jobs:
         with:
           packages: "platforms;android-34 build-tools;34.0.0"
 
-      - name: Extract ZIP and Fix Project
+      - name: Extract ZIP and Remove Paddle Lite
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -name "*.zip" | head -1)
           if [ -n "$ZIP_FILE" ]; then
@@ -42,78 +42,51 @@ jobs:
           echo "android.useAndroidX=true" >> gradle.properties
           echo "android.enableJetifier=true" >> gradle.properties
           
-          # إنشاء سكربت Paddle Lite الذكي مع نظام تجربة عدة إصدارات لتجنب خطأ 404 نهائياً
-          mkdir -p scripts
-          cat << 'EOT' > scripts/ensure_paddle.sh
-          #!/usr/bin/env bash
-          set -e
-          PADDLE_LITE_DIR="app/src/main/cpp/paddle_lite"
+          # حذف وإزالة كل ما يتعلق بـ Paddle Lite نهائياً من المشروع لتفادي أخطاء التحميل
+          rm -rf scripts/ensure_paddle.sh
+          rm -rf app/src/main/cpp
+          rm -rf app/src/main/java/com/comictrans/paddle
           
-          if [ -d "$PADDLE_LITE_DIR" ] && [ -f "$PADDLE_LITE_DIR/cxx/include/paddle_api.h" ]; then
-              exit 0
-          fi
-          
-          mkdir -p "$PADDLE_LITE_DIR"
-          TMP_FILE="paddle_lite_temp.tar.gz"
-          
-          VERSIONS=("v2.10.0" "v2.9.0" "v2.8.0" "v2.7.0" "v2.10" "v2.9")
-          SUCCESS=0
-          
-          for VER in "${VERSIONS[@]}"; do
-              URL="https://github.com/PaddlePaddle/Paddle-Lite/releases/download/${VER}/paddle_lite_android_${VER}.tar.gz"
-              echo "Trying to download Paddle Lite ${VER}..."
-              if curl -L --fail -o "$TMP_FILE" "$URL"; then
-                  FILE_SIZE=$(wc -c <"$TMP_FILE")
-                  if [ "$FILE_SIZE" -gt 1000000 ]; then
-                      echo "Successfully downloaded Paddle Lite ${VER}"
-                      SUCCESS=1
-                      break
-                  fi
-              fi
-              rm -f "$TMP_FILE"
-          done
-          
-          if [ "$SUCCESS" -eq 0 ]; then
-              echo "Error: All Paddle Lite download attempts failed with 404 or invalid size."
-              exit 1
-          fi
-          
-          tar -xzf "$TMP_FILE" -C "$PADDLE_LITE_DIR" --strip-components=1
-          rm -f "$TMP_FILE"
-          EOT
-          chmod +x scripts/ensure_paddle.sh
-
-          # Fix Gradle file (Namespace & Dependencies)
+          # تعديل ملف build.gradle لتنظيفه من أي تبعيات تخص Paddle Lite وإضافة المطلوب
           python3 - << 'EOF'
           import os, re
           app_gradle_path = 'app/build.gradle'
           if os.path.exists(app_gradle_path):
               with open(app_gradle_path, 'r') as f:
                   content = f.read()
+              
               if 'namespace' not in content:
                   content = re.sub(r'android\s*\{', 'android {\n    namespace "com.comictrans"', content)
+              
+              # إزالة مهام ومراجع الـ Native/Paddle من الملف
+              content = re.sub(r'externalNativeBuild\s*\{[^}]*\}', '', content, flags=re.DOTALL)
+              content = re.sub(r'cmake\s*\{[^}]*\}', '', content, flags=re.DOTALL)
+              content = re.sub(r'task\s+preparePaddleLite[^\}]*\}', '', content, flags=re.DOTALL)
+              content = re.sub(r'dependsOn\s+[\'"]?preparePaddleLite[\'"]?', '', content)
+
               if 'kotlin-kapt' not in content and 'kotlin.kapt' not in content:
                   content = content.replace('plugins {', "plugins {\n    id 'kotlin-kapt'")
               if 'androidx.room:room-runtime' not in content:
                   content = content.replace('dependencies {', 'dependencies {\n    implementation "androidx.room:room-runtime:2.6.1"\n    implementation "androidx.room:room-ktx:2.6.1"\n    kapt "androidx.room:room-compiler:2.6.1"')
+              
               with open(app_gradle_path, 'w') as f:
                   f.write(content)
           EOF
 
-          # Create fake icon
+          # إنشاء أيقونة وهمية لتجنب نقص الملفات
           mkdir -p app/src/main/res/mipmap-mdpi
           echo '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24"><path android:fillColor="#FF000000" android:pathData="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4Z"/></vector>' > app/src/main/res/mipmap-mdpi/ic_launcher.xml
           cp app/src/main/res/mipmap-mdpi/ic_launcher.xml app/src/main/res/mipmap-mdpi/ic_launcher_round.xml
           
-          # Build the APK
+          # بناء التطبيق مع تحديد المعامل --max-workers=1 لمنع خطأ 429 Too Many Requests نهائياً
           if [ -f "./gradlew" ]; then
             chmod +x ./gradlew
-            ./gradlew assembleDebug --no-daemon
+            ./gradlew assembleDebug --no-daemon --max-workers=1
           else
             wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip
             unzip -q gradle-8.5-bin.zip
             export PATH=$PWD/gradle-8.5/bin:$PATH
-            gradle assembleDebug --no-daemon
+            gradle assembleDebug --no-daemon --max-workers=1
           fi
 
       - name: Find and Upload APK
