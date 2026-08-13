@@ -76,3 +76,32 @@ jobs:
         with:
           name: test-results
           path: app/build/reports/tests/testDebugUnitTest/
+
+      # ⚠️ الخطوات التالية (Bundle + bundletool + Universal APK) غير مُختبَرة فعلياً بعد.
+      # الهدف: دمج app + feature_ai بملف APK واحد قابل للتثبيت مباشرة من مدير الملفات
+      # على الجوال، بدون adb — لأن app-debug.apk وfeature_ai-debug.apk منفصلين لا يُثبَّتان
+      # إلا معاً عبر `adb install-multiple`، وهذا غير متاح بدون جهاز كمبيوتر.
+      - name: Build Debug Bundle (AAB)
+        run: ./gradlew bundleDebug --stacktrace
+
+      - name: Download bundletool
+        run: curl -L -o bundletool.jar https://github.com/google/bundletool/releases/latest/download/bundletool-all.jar
+
+      - name: Build Universal APK (single-file, installable directly on phone)
+        run: |
+          java -jar bundletool.jar build-apks \
+            --bundle=app/build/outputs/bundle/debug/app-debug.aab \
+            --output=universal.apks \
+            --mode=universal \
+            --ks=$HOME/.android/debug.keystore \
+            --ks-pass=pass:android \
+            --ks-key-alias=androiddebugkey \
+            --key-pass=pass:android
+          unzip -o universal.apks -d universal_extracted
+          cp universal_extracted/universal.apk comic-translator-universal-debug.apk
+
+      - name: Upload Universal APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: comic-translator-universal-debug-apk
+          path: comic-translator-universal-debug.apk
