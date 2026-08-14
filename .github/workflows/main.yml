@@ -85,7 +85,17 @@ jobs:
         run: ./gradlew bundleDebug --stacktrace
 
       - name: Download bundletool
-        run: curl -L -o bundletool.jar https://github.com/google/bundletool/releases/latest/download/bundletool-all.jar
+        run: |
+          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/google/bundletool/releases/latest \
+            | grep "browser_download_url.*\.jar" \
+            | cut -d '"' -f 4)
+          if [ -z "$DOWNLOAD_URL" ]; then
+            echo "::error::تعذر إيجاد رابط تحميل bundletool من GitHub API"
+            exit 1
+          fi
+          echo "Downloading: $DOWNLOAD_URL"
+          curl -L -o bundletool.jar "$DOWNLOAD_URL"
+          ls -la bundletool.jar
 
       - name: Build Universal APK (single-file, installable directly on phone)
         run: |
