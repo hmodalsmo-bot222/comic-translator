@@ -99,6 +99,13 @@ jobs:
 
       - name: Build Universal APK (single-file, installable directly on phone)
         run: |
+          mkdir -p $HOME/.android
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkey -v -keystore $HOME/.android/debug.keystore \
+              -storepass android -alias androiddebugkey -keypass android \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
           java -jar bundletool.jar build-apks \
             --bundle=app/build/outputs/bundle/debug/app-debug.aab \
             --output=universal.apks \
