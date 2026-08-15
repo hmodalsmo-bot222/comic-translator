@@ -13,13 +13,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # المستودع يحتوي ملف zip للمشروع مو مشروع مفكوك — نفكه هون قبل أي خطوة بناء.
-      # لو المحتوى ملفوف بمجلد واحد إضافي جوه الـ zip، نسحب محتواه لجذر الـ workspace تلقائياً.
+      # ═══════════════════════════════════════════════════════════════
+      # 1. فك ZIP المشروع
+      # ═══════════════════════════════════════════════════════════════
       - name: Extract project ZIP
         run: |
           ZIP_FILE=$(find . -maxdepth 1 -iname "*.zip" | head -n1)
           if [ -z "$ZIP_FILE" ]; then
-            echo "::error::ما لقيت أي ملف zip.. بجذر المستودع"
+            echo "::error::ما لقيت أي ملف zip في جذر المستودع"
             exit 1
           fi
           echo "Found: $ZIP_FILE"
@@ -38,6 +39,62 @@ jobs:
           echo "--- محتوى جذر المشروع بعد الفك ---"
           ls -la
 
+      # ═══════════════════════════════════════════════════════════════
+      # 2. تحميل OpenCV Android SDK (المشروع يحتاجه)
+      # ═══════════════════════════════════════════════════════════════
+      - name: Download OpenCV Android SDK
+        run: |
+          echo "📥 تحميل OpenCV Android SDK..."
+          wget -q --show-progress https://github.com/opencv/opencv/releases/download/4.8.1/opencv-4.8.1-android-sdk.zip
+          echo "📦 فك الضغط..."
+          unzip -q opencv-4.8.1-android-sdk.zip
+
+          echo "🔧 نقل ملفات OpenCV..."
+          mkdir -p opencv
+          cp -r OpenCV-android-sdk/sdk/* opencv/
+
+          # إنشاء build.gradle لـ OpenCV إذا مفقود
+          if [ ! -f "opencv/build.gradle" ]; then
+            cat > opencv/build.gradle << 'EOF'
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 34
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 34
+    }
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+            jniLibs.srcDirs = ['native/libs']
+        }
+    }
+}
+EOF
+          fi
+
+          # إنشاء AndroidManifest.xml لـ OpenCV إذا مفقود
+          if [ ! -f "opencv/AndroidManifest.xml" ]; then
+            mkdir -p opencv/src
+            cat > opencv/AndroidManifest.xml << 'EOF'
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="org.opencv"
+    android:versionCode="4810"
+    android:versionName="4.8.1" >
+</manifest>
+EOF
+          fi
+
+          rm -rf OpenCV-android-sdk opencv-4.8.1-android-sdk.zip
+          echo "✅ OpenCV جاهز!"
+          ls -la opencv/
+
+      # ═══════════════════════════════════════════════════════════════
+      # 3. إعداد البيئة
+      # ═══════════════════════════════════════════════════════════════
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
@@ -49,26 +106,29 @@ jobs:
         with:
           gradle-version: '8.4'
 
-      # المشروع لا يحتوي على gradlew/gradle-wrapper.jar، فنولّدهما هنا
       - name: Generate Gradle Wrapper
         run: gradle wrapper --gradle-version 8.4
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # ═══════════════════════════════════════════════════════════════
+      # 4. البناء
+      # ═══════════════════════════════════════════════════════════════
       - name: Build Debug APK
         run: ./gradlew assembleDebug --stacktrace
 
       - name: Run Unit Tests
         run: ./gradlew test --stacktrace
 
+      # ═══════════════════════════════════════════════════════════════
+      # 5. رفع الملفات
+      # ═══════════════════════════════════════════════════════════════
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: comic-translator-debug-apk
-          path: |
-            app/build/outputs/apk/debug/app-debug.apk
-            feature_ai/build/outputs/apk/debug/feature_ai-debug.apk
+          path: app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload Test Results
         if: always()
@@ -77,43 +137,29 @@ jobs:
           name: test-results
           path: app/build/reports/tests/testDebugUnitTest/
 
-      # ⚠️ الخطوات التالية (Bundle + bundletool + Universal APK) غير مُختبَرة فعلياً بعد.
-      # الهدف: دمج app + feature_ai بملف APK واحد قابل للتثبيت مباشرة من مدير الملفات
-      # على الجوال، بدون adb — لأن app-debug.apk وfeature_ai-debug.apk منفصلين لا يُثبَّتان
-      # إلا معاً عبر `adb install-multiple`، وهذا غير متاح بدون جهاز كمبيوتر.
+      # ═══════════════════════════════════════════════════════════════
+      # 6. بناء Universal APK (ملف واحد قابل للتثبيت مباشرة)
+      # ═══════════════════════════════════════════════════════════════
       - name: Build Debug Bundle (AAB)
         run: ./gradlew bundleDebug --stacktrace
 
       - name: Download bundletool
         run: |
-          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/google/bundletool/releases/latest \
-            | grep "browser_download_url.*\.jar" \
-            | cut -d '"' -f 4)
+          DOWNLOAD_URL=$(curl -s https://api.github.com/repos/google/bundletool/releases/latest             | grep "browser_download_url.*\.jar"             | cut -d '"' -f 4)
           if [ -z "$DOWNLOAD_URL" ]; then
-            echo "::error::تعذر إيجاد رابط تحميل bundletool من GitHub API"
+            echo "::error::تعذر إيجاد رابط تحميل bundletool"
             exit 1
           fi
           echo "Downloading: $DOWNLOAD_URL"
           curl -L -o bundletool.jar "$DOWNLOAD_URL"
-          ls -la bundletool.jar
 
-      - name: Build Universal APK (single-file, installable directly on phone)
+      - name: Build Universal APK
         run: |
           mkdir -p $HOME/.android
           if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkey -v -keystore $HOME/.android/debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
+            keytool -genkey -v -keystore $HOME/.android/debug.keystore               -storepass android -alias androiddebugkey -keypass android               -keyalg RSA -keysize 2048 -validity 10000               -dname "CN=Android Debug,O=Android,C=US"
           fi
-          java -jar bundletool.jar build-apks \
-            --bundle=app/build/outputs/bundle/debug/app-debug.aab \
-            --output=universal.apks \
-            --mode=universal \
-            --ks=$HOME/.android/debug.keystore \
-            --ks-pass=pass:android \
-            --ks-key-alias=androiddebugkey \
-            --key-pass=pass:android
+          java -jar bundletool.jar build-apks             --bundle=app/build/outputs/bundle/debug/app-debug.aab             --output=universal.apks             --mode=universal             --ks=$HOME/.android/debug.keystore             --ks-pass=pass:android             --ks-key-alias=androiddebugkey             --key-pass=pass:android
           unzip -o universal.apks -d universal_extracted
           cp universal_extracted/universal.apk comic-translator-universal-debug.apk
 
