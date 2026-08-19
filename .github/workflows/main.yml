@@ -77,7 +77,6 @@ jobs:
           name: test-results
           path: app/build/reports/tests/testDebugUnitTest/
 
-      # ⚠️ الخطوات التالية (Bundle + bundletool + Universal APK) غير مُختبَرة فعلياً بعد.
       # الهدف: دمج app + feature_ai بملف APK واحد قابل للتثبيت مباشرة من مدير الملفات
       # على الجوال، بدون adb — لأن app-debug.apk وfeature_ai-debug.apk منفصلين لا يُثبَّتان
       # إلا معاً عبر `adb install-multiple`، وهذا غير متاح بدون جهاز كمبيوتر.
@@ -97,23 +96,25 @@ jobs:
           curl -L -o bundletool.jar "$DOWNLOAD_URL"
           ls -la bundletool.jar
 
+      # 🔍 (إصلاح) الخطوة السابقة كانت تولّد keystore عشوائي جديد بـ~/.android في كل تشغيل
+      # CI (لأن كل تشغيل يبدأ من جهاز افتراضي جديد بلا ملف محفوظ من مرة سابقة) وتوقّع
+      # الـUniversal APK به — أي أن كل بناء جديد كان يحمل توقيعاً مختلفاً عن سابقه، فيرفض
+      # أندرويد تثبيته كتحديث فوق النسخة السابقة (نفس مشكلة تعارض التوقيع بالضبط، لكن هنا
+      # بمستوى الـCI لا build.gradle). الإصلاح: التوقيع الآن بنفس keystore الثابت المرفق
+      # فعلياً بالمستودع (app/keystore/comic-translator-debug.keystore، alias
+      # comictrans-debug) — نفس الملف والبيانات المستخدمة أصلاً بـsigningConfigs.debug في
+      # app/build.gradle، فتوقيع الـUniversal APK يطابق توقيع app-debug.apk نفسه، ويبقى
+      # ثابتاً عبر كل تشغيلات CI القادمة.
       - name: Build Universal APK (single-file, installable directly on phone)
         run: |
-          mkdir -p $HOME/.android
-          if [ ! -f "$HOME/.android/debug.keystore" ]; then
-            keytool -genkey -v -keystore $HOME/.android/debug.keystore \
-              -storepass android -alias androiddebugkey -keypass android \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
           java -jar bundletool.jar build-apks \
             --bundle=app/build/outputs/bundle/debug/app-debug.aab \
             --output=universal.apks \
             --mode=universal \
-            --ks=$HOME/.android/debug.keystore \
-            --ks-pass=pass:android \
-            --ks-key-alias=androiddebugkey \
-            --key-pass=pass:android
+            --ks=app/keystore/comic-translator-debug.keystore \
+            --ks-pass=pass:comictrans2026 \
+            --ks-key-alias=comictrans-debug \
+            --key-pass=pass:comictrans2026
           unzip -o universal.apks -d universal_extracted
           cp universal_extracted/universal.apk comic-translator-universal-debug.apk
 
